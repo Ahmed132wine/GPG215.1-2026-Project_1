@@ -8,10 +8,16 @@ public class GyroCameraLook : MonoBehaviour
 
     [Header("Aim Sensitivity")]
     public float gyroSensitivity = 1.5f;
-    public float mouseSensitivity = 3f;
+    public float mouseSensitivity = 1.5f;
 
     private float mouseX = 0f;
     private float mouseY = 0f;
+
+    [Header("Recoil System")]
+    [Tooltip("How fast the camera returns to original aim after recoil kick")]
+    public float recoilRecoverySpeed = 8f;
+    private Vector2 currentRecoilOffset;
+    private Vector2 targetRecoilOffset;
 
     private void Start()
     {
@@ -34,6 +40,10 @@ public class GyroCameraLook : MonoBehaviour
             mouseX = transform.localEulerAngles.y;
             mouseY = transform.localEulerAngles.x;
         }
+
+        // Reset recoil offsets when returning to aim
+        currentRecoilOffset = Vector2.zero;
+        targetRecoilOffset = Vector2.zero;
     }
 
     public void DisableGyro()
@@ -44,26 +54,48 @@ public class GyroCameraLook : MonoBehaviour
         }
     }
 
+    
+    public void ApplyRecoil(float verticalKick, float horizontalKickMax)
+    {
+        
+        float horizontalKick = Random.Range(-horizontalKickMax, horizontalKickMax);
+        targetRecoilOffset += new Vector2(horizontalKick, -verticalKick);
+    }
+
     private void Update()
     {
-        if (gyroSupported && Input.gyro.enabled)
-        {
-            
-            Quaternion gyroRotation = Input.gyro.attitude;
-            // Apply correct mobile rotation mapping
-            transform.localRotation = baseRotation * new Quaternion(-gyroRotation.x, -gyroRotation.y, gyroRotation.z, gyroRotation.w);
-        }
-        else
-        {
-            
-            if (Input.GetMouseButton(0) || Input.GetMouseButton(1))
-            {
-                mouseX += Input.GetAxis("Mouse X") * mouseSensitivity;
-                mouseY -= Input.GetAxis("Mouse Y") * mouseSensitivity;
-                mouseY = Mathf.Clamp(mouseY, -40f, 40f); // Lock vertical viewport bounds
+        
+        targetRecoilOffset = Vector2.Lerp(targetRecoilOffset, Vector2.zero, Time.deltaTime * recoilRecoverySpeed);
+        currentRecoilOffset = Vector2.Lerp(currentRecoilOffset, targetRecoilOffset, Time.deltaTime * (recoilRecoverySpeed * 2f));
 
-                transform.localRotation = Quaternion.Euler(mouseY, mouseX, 0f);
+        
+        if (Input.touchCount > 0 || Input.GetMouseButton(0))
+        {
+            float deltaX = 0f;
+            float deltaY = 0f;
+
+            if (Input.touchCount > 0)
+            {
+                Touch touch = Input.GetTouch(0);
+                if (touch.phase == TouchPhase.Moved)
+                {
+                    deltaX = touch.deltaPosition.x * (mouseSensitivity * 0.1f);
+                    deltaY = touch.deltaPosition.y * (mouseSensitivity * 0.1f);
+                }
             }
+            else
+            {
+                deltaX = Input.GetAxis("Mouse X") * mouseSensitivity;
+                deltaY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+            }
+
+            mouseX += deltaX;
+            mouseY -= deltaY;
+            mouseY = Mathf.Clamp(mouseY, -40f, 40f); 
         }
+
+        
+        Quaternion rotation = Quaternion.Euler(mouseY + currentRecoilOffset.y, mouseX + currentRecoilOffset.x, 0f);
+        transform.localRotation = rotation;
     }
 }

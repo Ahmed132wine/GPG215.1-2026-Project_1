@@ -11,6 +11,10 @@ public class UI : MonoBehaviour
     public TMP_Text weaponText;
     public GameObject crosshairOverlay;
 
+    [Header("Sniper Vignette Focus Overlay")]
+    [Tooltip("Drag the fullscreen UI Image here.")]
+    public Image focusVignette;
+
     [Header("Control Buttons")]
     public Button aimButton;
     public Button fireButton;
@@ -80,6 +84,12 @@ public class UI : MonoBehaviour
             statusText.color = Color.red;
             crosshairOverlay.SetActive(true);
 
+            // Enable grey-out vignette overlay
+            if (focusVignette != null)
+            {
+                focusVignette.enabled = true;
+            }
+
             // Enable gyroscope adjustments when popped out of cover
             Camera.main.GetComponent<GyroCameraLook>()?.EnableGyro();
         }
@@ -88,6 +98,12 @@ public class UI : MonoBehaviour
             statusText.text = "SAFE IN COVER";
             statusText.color = Color.green;
             crosshairOverlay.SetActive(false);
+
+            // Disable grey-out vignette overlay
+            if (focusVignette != null)
+            {
+                focusVignette.enabled = false;
+            }
 
             // Disable gyroscopes to lock orientation and reset camera view behind the cover
             Camera.main.GetComponent<GyroCameraLook>()?.DisableGyro();

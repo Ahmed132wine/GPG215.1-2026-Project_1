@@ -17,6 +17,8 @@ public class PlayerController : MonoBehaviour
     private int weaponIndex = 0;
     private IWeaponStrategy[] weapons;
 
+
+
     [Header("Player Parameters")]
     public float maxHealth = 100f;
     [SerializeField] private float currentHealth;
@@ -249,13 +251,18 @@ public class RifleStrategy : IWeaponStrategy
 
     public void Fire(PlayerController player, Transform firePoint)
     {
-        // Rifle Fire logic: automatic raycasting
+        // Apply moderate, rapid-fire recoil
+        if (Camera.main.TryGetComponent(out GyroCameraLook gyroCam))
+        {
+            gyroCam.ApplyRecoil(1.5f, 0.8f);
+        }
+
         Ray ray = new Ray(firePoint.position, firePoint.forward);
         if (Physics.Raycast(ray, out RaycastHit hit))
         {
             if (hit.collider.TryGetComponent(out ShootingTarget target))
             {
-                target.TakeDamage(1); 
+                target.TakeDamage(1);
             }
         }
     }
@@ -268,13 +275,18 @@ public class SniperStrategy : IWeaponStrategy
 
     public void Fire(PlayerController player, Transform firePoint)
     {
-        
+        // Apply heavy, massive recoil for the sniper rifle
+        if (Camera.main.TryGetComponent(out GyroCameraLook gyroCam))
+        {
+            gyroCam.ApplyRecoil(5.0f, 2.0f);
+        }
+
         Ray ray = new Ray(firePoint.position, firePoint.forward);
         if (Physics.Raycast(ray, out RaycastHit hit))
         {
             if (hit.collider.TryGetComponent(out ShootingTarget target))
             {
-                target.TakeDamage(5); 
+                target.TakeDamage(5);
             }
         }
     }
