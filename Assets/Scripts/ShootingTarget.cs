@@ -16,6 +16,8 @@ public class ShootingTarget : MonoBehaviour
     public Color hitColor = Color.red;
     private Color originalColor;
 
+    public static event System.Action OnTargetDefeated; 
+
     private PlayerController player;
     private float nextShootTime;
     private bool isDead = false;
@@ -25,7 +27,7 @@ public class ShootingTarget : MonoBehaviour
         player = PlayerController.Instance;
         nextShootTime = Time.time + Random.Range(1.0f, shootInterval);
 
-        // Auto-detect renderer if not assigned in inspector
+       
         if (targetRenderer == null)
         {
             targetRenderer = GetComponent<Renderer>();
@@ -33,7 +35,7 @@ public class ShootingTarget : MonoBehaviour
 
         if (targetRenderer != null)
         {
-            // Support both material-based 3D mesh colors and 2D sprite colors
+            
             originalColor = targetRenderer.material.color;
         }
     }
@@ -54,7 +56,7 @@ public class ShootingTarget : MonoBehaviour
     {
         if (PlayerController.Instance != null && PlayerController.Instance.currentStance == PlayerController.StanceState.Aiming)
         {
-            
+            // Deal damage based on enemy class
             float damage = (type == TargetType.Elite) ? 15f : 8f;
             PlayerController.Instance.TakeDamage(damage);
             Debug.Log($"{type} fired! Player took {damage} damage.");
@@ -95,7 +97,12 @@ public class ShootingTarget : MonoBehaviour
         isDead = true;
         Debug.Log($"{type} defeated!");
 
-        // Physical Feedback: Disable colliders so player can't keep hitting it, then tumble
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayEnemyDeath();
+
+        //Notify Level Manager that a kill happened
+        OnTargetDefeated?.Invoke();
+
+       
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
@@ -116,7 +123,7 @@ public class ShootingTarget : MonoBehaviour
         float elapsed = 0f;
         float duration = 0.5f;
         Quaternion startRot = transform.rotation;
-       
+        // Tumble 90 degrees backward on the Z/X axis
         Quaternion endRot = Quaternion.Euler(transform.eulerAngles.x, transform.eulerAngles.y, transform.eulerAngles.z + 90f);
 
         while (elapsed < duration)

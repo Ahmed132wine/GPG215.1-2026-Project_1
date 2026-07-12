@@ -4,54 +4,43 @@ using System;
 
 public class PlayerController : MonoBehaviour
 {
-    // 1. SINGLETON PATTERN
     public static PlayerController Instance { get; private set; }
 
-    // 2. STATE PATTERN (Player Stance States)
     public enum StanceState { InCover, Aiming }
-    [Header("Stance State")]
     public StanceState currentStance = StanceState.InCover;
 
-    // 3. STRATEGY PATTERN (Weapons)
     public IWeaponStrategy currentWeapon;
     private int weaponIndex = 0;
     private IWeaponStrategy[] weapons;
 
-
-
-    [Header("Player Parameters")]
     public float maxHealth = 100f;
     [SerializeField] private float currentHealth;
     [SerializeField] private int currentAmmo;
 
-    [Header("Cover Movement System")]
     public Transform leftCoverNode;
     public Transform rightCoverNode;
     public float movementSpeed = 8f;
     private Transform targetCoverNode;
 
-    [Header("Camera Perspective Zoom Settings")]
-    [Tooltip("Drag your Main Camera here. If left empty, it will auto-detect Camera.main.")]
     public Transform playerCamera;
-    public Vector3 coverCameraLocalPosition = new Vector3(0f, 1.5f, -5f); // 3rd Person View
-    public Vector3 aimCameraLocalPosition = new Vector3(0f, 1.5f, 0.6f);   // 1st Person POV 
+    public Vector3 coverCameraLocalPosition = new Vector3(0f, 1.5f, -5f);
+    public Vector3 aimCameraLocalPosition = new Vector3(0f, 1.5f, 0.6f);
     public float coverFOV = 60f;
-    public float aimFOV = 35f; // Zoom in perspective
+    public float aimFOV = 35f;
     public float cameraTransitionSpeed = 12f;
 
-    [Header("Player Visuals")]
-    [Tooltip("Drag your Player Capsule's MeshRenderer or SpriteRenderer here to prevent clipping in 1st Person POV.")]
+    public float healthRegenRate = 5f;
+
     public Renderer playerRenderer;
 
-    
-    
     private float groundY;
 
-    // 4. OBSERVER PATTERN (UI Actions)
     public static event Action<float> OnHealthChanged;
     public static event Action<int> OnAmmoChanged;
     public static event Action<StanceState> OnStanceChanged;
     public static event Action<string> OnWeaponChanged;
+    public static event Action OnPlayerDamaged;
+    public static event Action OnPlayerDeath;
 
     private void Awake()
     {
@@ -63,10 +52,9 @@ public class PlayerController : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Initialize Strategies (Weapons)
         weapons = new IWeaponStrategy[] {
-            new RifleStrategy(),
-            new SniperStrategy()
+            new SniperStrategy(),
+            new RifleStrategy()
         };
         currentWeapon = weapons[0];
     }
@@ -75,15 +63,12 @@ public class PlayerController : MonoBehaviour
     {
         currentHealth = maxHealth;
         currentAmmo = currentWeapon.MaxAmmo;
-        targetCoverNode = leftCoverNode; // Start at left cover
+        targetCoverNode = leftCoverNode;
 
-        
         groundY = transform.position.y;
 
-        
         SetupCameraRig();
 
-       
         OnHealthChanged?.Invoke(currentHealth);
         OnAmmoChanged?.Invoke(currentAmmo);
         OnStanceChanged?.Invoke(currentStance);
@@ -92,19 +77,15 @@ public class PlayerController : MonoBehaviour
 
     private void SetupCameraRig()
     {
-        // Auto-assign camera 
         if (playerCamera == null)
         {
             if (Camera.main == null)
             {
-                Debug.LogError("PlayerController: No Camera tagged 'MainCamera' found in the scene. " +
-                    "Select your camera and set its Tag to 'MainCamera' in the Inspector.");
                 return;
             }
             playerCamera = Camera.main.transform;
         }
 
-       
         if (playerCamera.parent != transform)
         {
             playerCamera.SetParent(transform, false);
@@ -122,14 +103,16 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
-       
         if (targetCoverNode != null)
         {
             Vector3 targetPos = new Vector3(targetCoverNode.position.x, groundY, targetCoverNode.position.z);
             transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * movementSpeed);
         }
+        if (currentStance == StanceState.InCover && currentHealth < maxHealth)
+        {
+            RestoreHealth(healthRegenRate * Time.deltaTime);
+        }
 
-       
         HandleCameraPerspective();
     }
 
@@ -137,21 +120,17 @@ public class PlayerController : MonoBehaviour
     {
         if (playerCamera == null) return;
 
-        
         Vector3 targetLocalPos = (currentStance == StanceState.Aiming) ? aimCameraLocalPosition : coverCameraLocalPosition;
         float targetFOV = (currentStance == StanceState.Aiming) ? aimFOV : coverFOV;
 
-      
         playerCamera.localPosition = Vector3.Lerp(playerCamera.localPosition, targetLocalPos, Time.deltaTime * cameraTransitionSpeed);
 
-        
         Camera cam = playerCamera.GetComponent<Camera>();
         if (cam != null)
         {
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFOV, Time.deltaTime * cameraTransitionSpeed);
         }
 
-        
         if (playerRenderer != null)
         {
             playerRenderer.enabled = (currentStance == StanceState.InCover);
@@ -181,7 +160,7 @@ public class PlayerController : MonoBehaviour
 
     public void SwitchWeapon()
     {
-        if (currentStance != StanceState.InCover) return; // Only switch while safe
+        if (currentStance != StanceState.InCover) return;
 
         weaponIndex = (weaponIndex + 1) % weapons.Length;
         currentWeapon = weapons[weaponIndex];
@@ -197,27 +176,39 @@ public class PlayerController : MonoBehaviour
 
         if (currentAmmo <= 0)
         {
-            Debug.Log("Out of ammo! Return to cover to reload.");
             return;
         }
+
+        if (!currentWeapon.CanFire()) return;
 
         currentAmmo--;
         OnAmmoChanged?.Invoke(currentAmmo);
 
-       
         currentWeapon.Fire(this, Camera.main.transform);
     }
 
     public void TakeDamage(float amount)
     {
-        if (currentStance == StanceState.InCover) return; // Safe behind cover
+        if (currentHealth <= 0) return;
+        if (currentStance == StanceState.InCover) return;
 
         currentHealth = Mathf.Max(0, currentHealth - amount);
         OnHealthChanged?.Invoke(currentHealth);
 
+        OnPlayerDamaged?.Invoke();
+        if (Camera.main != null && Camera.main.TryGetComponent(out GyroCameraLook gyroCam))
+        {
+            gyroCam.TriggerShake(0.2f, 0.4f);
+        }
+
         if (currentHealth <= 0)
         {
-            Debug.LogError("Player Eliminated! Level Failed.");
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayPlayerDeath();
+            OnPlayerDeath?.Invoke();
+        }
+        else
+        {
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayPlayerDamage();
         }
     }
 
@@ -241,6 +232,7 @@ public interface IWeaponStrategy
 {
     void Fire(PlayerController player, Transform firePoint);
     int MaxAmmo { get; }
+    bool CanFire();
     string WeaponName { get; }
 }
 
@@ -249,9 +241,17 @@ public class RifleStrategy : IWeaponStrategy
     public int MaxAmmo => 30;
     public string WeaponName => "AK-47 (Assault)";
 
+    private float fireRate = 0.15f;
+    private float nextFireTime = 0f;
+
+    public bool CanFire() => Time.time >= nextFireTime;
+
     public void Fire(PlayerController player, Transform firePoint)
     {
-        // Apply moderate, rapid-fire recoil
+        nextFireTime = Time.time + fireRate;
+
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayRifleShot();
+
         if (Camera.main.TryGetComponent(out GyroCameraLook gyroCam))
         {
             gyroCam.ApplyRecoil(1.5f, 0.8f);
@@ -273,12 +273,20 @@ public class SniperStrategy : IWeaponStrategy
     public int MaxAmmo => 5;
     public string WeaponName => "Precision Sniper";
 
+    private float fireRate = 2.0f;
+    private float nextFireTime = 0f;
+
+    public bool CanFire() => Time.time >= nextFireTime;
+
     public void Fire(PlayerController player, Transform firePoint)
     {
-        // Apply heavy, massive recoil for the sniper rifle
+        nextFireTime = Time.time + fireRate;
+
+        if (AudioManager.Instance != null) AudioManager.Instance.PlaySniperShot();
+
         if (Camera.main.TryGetComponent(out GyroCameraLook gyroCam))
         {
-            gyroCam.ApplyRecoil(5.0f, 2.0f);
+            gyroCam.ApplyRecoil(2.0f, 1.0f);
         }
 
         Ray ray = new Ray(firePoint.position, firePoint.forward);
